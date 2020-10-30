@@ -1,7 +1,7 @@
-using PowerDynamics: AbstractLine
+using PowerDynamics#: AbstractLine, AbstractNode
 ###### knoten ######
 
-function CIGRE_static()
+function CIGRE_static(u_s)
 
     LoadP = [
         19839E3,
@@ -37,7 +37,7 @@ function CIGRE_static()
 
     begin
         busses_static = Array{PowerDynamics.AbstractNode,1}([])
-        push!(busses_static, SlackAlgebraic(U = 110E3 / base_voltage_HV))
+        push!(busses_static, SlackAlgebraic(U = u_s)) #U = 110E3 / base_voltage_HV
 
         for (P, Q) in zip(LoadP, LoadQ)
             try
