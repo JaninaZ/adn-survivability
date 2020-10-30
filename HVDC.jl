@@ -11,16 +11,13 @@ function ADN_construct(P_ref, Q_ref, u_s)
        #creates a PowerGrid from nodes and lines (either given as a list or as a dictionay).
 
        power_flow = pf_sol(pg_static, initial_guess(pg_static), nothing) #pkg PowerDynamics.jl
-    #initial_guess:  ~/control.jl   gives out a guess of voltage
+    #initial_guess:  ~/control.jl   gives out a guess of voltage #???这里是已有关于u的guess
     #The voltage of all nodes is fixed to the voltage of the first SlackAlgebraic
     #in the system. The other symbols are set to zero.
     #pf_sol: power_flow.jl  #### solve power flow  return State(pg, pf)
-    #???这里是已有关于u的guess
+    
    
-   
-       ## construct ADN: buses, MV1...11(DG_locs)
-   
-       busses = copy(busses_static)
+       busses = copy(busses_static)  ## construct ADN: buses, MV1...11(DG_locs)
    
        DG_locs = 2:12 #located, 1 for slack, so 2 for MV1
    
