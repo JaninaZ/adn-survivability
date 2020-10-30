@@ -1,6 +1,28 @@
 import Base: @__doc__
-using PowerDynamics: @DynamicNode
-using PowerDynamics: AbstractLine, PiModel
+using PowerDynamics#: @DynamicNode
+#using PowerDynamics: AbstractLine, PiModel
+using Pkg
+    #Pkg.activate(".")
+
+using OrdinaryDiffEq
+using Distributions
+using Measurements
+
+using Random
+Random.seed!(42)
+
+dir = @__DIR__
+
+include("$dir/control.jl")
+# custom types
+include("$dir/DGUnit.jl")
+include("$dir/OLTC.jl")
+# load actual data
+include("$dir/cigre_static.jl")
+# failure model
+include("$dir/short_circuit.jl")
+# static solution
+include("$dir/power_flow.jl")
 
 function ADN_construct(P_ref, Q_ref, u_s)
 
@@ -87,7 +109,27 @@ function ADN_construct(P_ref, Q_ref, u_s)
 end #  ADN construct
    
    # construct an ADN 
-   
+
+   begin
+    const base_power = 1E6 # 1MW
+    const base_voltage = 20E3 # 20kV
+    const base_current = base_power / base_voltage # 50A
+    const base_admittance = base_power / base_voltage^2 # 0.0025Ω^-1
+    const ω = 2 * π * 50.0 # 314.1593rad/s
+    # per unit HV
+    const base_voltage_HV = 110E3 # 110kV
+    const base_admittance_HV = base_power / base_voltage_HV^2 # 8.264462809917356e-5
+    const base_current_HV = base_power / base_voltage_HV
+end
+
+   S_total = complex(24.373141067954748, 6.115974820490637) * 1e6 / base_power
+   P_ref = t -> 0.9 * real(S_total) #certain value
+   Q_ref = t -> 0.9 * imag(S_total)
+   u_s =  110E3 / base_voltage_HV 
+
+#  S_total = 	complex(24.373141067954748, 6.115974820490637) * 1e6 / base_power
+#  P_ref(t) = t > 0.25 ? 1.1 * real(S_total) : real(S_total)
+#  Q_ref(t) = t > 0.25 ? 1.1 * imag(S_total) : imag(S_total)
    adn_pg, adn_cpg = ADN_construct(P_ref, Q_ref, u_s)
    #the code started here, then go to function ADN_construct
    
@@ -122,7 +164,7 @@ begin
         B_f = par.B_f
         Y_dc = par.Y_dc
 
-        function converter(S_slack,p)
+        function converter(S_slack, p, u_s)
             #S_slack to be deined somewhere later, the value given from ADN
             u_s = complex(x[1], x[2]) #ADN side
             Vsamp = abs(u_s)
