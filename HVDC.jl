@@ -1,6 +1,10 @@
 import Base: @__doc__
 using PowerDynamics#: @DynamicNode
 #using PowerDynamics: AbstractLine, PiModel
+import PowerDynamics:
+    construct_vertex, dimension, showdefinition, AbstractNode
+using LinearAlgebra: Diagonal
+
 using Pkg
     #Pkg.activate(".")
 
@@ -123,9 +127,11 @@ end #  ADN construct
 end
 
    S_total = complex(24.373141067954748, 6.115974820490637) * 1e6 / base_power
-   P_ref = t -> 0.9 * real(S_total) #certain value
-   Q_ref = t -> 0.9 * imag(S_total)
-   u_s =  110E3 / base_voltage_HV 
+   P_ref = 0.9 * real(S_total) #certain value
+   Q_ref = 0.9 * imag(S_total)
+   u_s = 110E3 / base_voltage_HV  #
+   quad = 0.0
+   verbose = false
 
 #  S_total = 	complex(24.373141067954748, 6.115974820490637) * 1e6 / base_power
 #  P_ref(t) = t > 0.25 ? 1.1 * real(S_total) : real(S_total)
@@ -153,7 +159,7 @@ begin
         DCConverter(b_i, c_i, r_i, I_c_max, V_c_max, V_c_min, Z_c, B_f, Y_dc )
         # rhs(pg::PowerGrid)
         # rhs(cpg::ControlledPowerGrid)
-    function converter_construct(par::DCConverter)
+    function construct_vertex(par::DCConverter)
         b_i = par.b_i
         c_i = par.c_i
         r_i = par.r_i
@@ -190,6 +196,9 @@ begin
             over_voltage = Vcamp > V_c_max
             under_voltage = Vcamp < V_c_min
 
+            Y_dc = matrix_HVDC  #defined below
+            voltage_vector = [source_voltage,destination_voltage]
+            I_dc = Y_dc * (destination_voltage - source_voltage)
 
             #power flow at DC side
             if over_voltage | global_over_voltage 
@@ -199,15 +208,17 @@ begin
             else
                 P_dc = I_c * u_c - P_loss
             end
+            U_dc 
         end
+        U_dc, P_dc
     end
-    U_dc, P_dc
 end
+#export construct_vertex
 
-converter = converter_construct(par::DCConverter)
+#converter = construct_vertex(par::DCConverter)
 
 #node i,j the admittance matrix is symmetic y_ij=y_ji
-function PiModel(y_ij)
+function matrix_HVDC(y_ij)
     matrix_HVDC = zeros(Complex{Float64}, 2, 2)
     matrix_HVDC[1, 1] = y_ij 
     matrix_HVDC[1, 2] = - y_ij 
@@ -217,89 +228,117 @@ function PiModel(y_ij)
 end
 
 
-# in RLLine.jl already defined 
-@Line PiModelLine(from, to, y_ij) begin
-    Y_dc = PiModel(y_ij)
-end begin
-    voltage_vector = [source_voltage,destination_voltage]
-    I_dc = Y_dc * (destination_voltage - source_voltage)
-    #
+#constant  AC power control using PI controller
+
+function PI_controller_inner(P_ref, Q_ref, P_ref_last, Q_ref_last)
+    ΔP = P_ref(t) - P_ref_last  #reference - measure value at ADN side
+    ΔQ = Q_ref(t) - Q_ref_last  
+    P_ref_last = real(S_slack) #the first loop
+    Q_ref_last = imag(S_slack)
+
+    K_p_inner = 1.0  #values of k to be discussed
+    K_i_inner = 0.5
+    switch_value = 1.0
+    #C_i_inner = 1 #help to reduce the error in a shorter time
+
+    if abs(ΔP) <= switch_value | abs(ΔP) <= switch_value
+        P_ref = K_p_inner * P_ref_last + K_i_inner * integrate(P_ref_last)
+        Q_ref = K_p_inner * Q_ref_last + K_i_inner * integrate(Q_ref_last)
+        P_ref_last = P_ref
+        Q_ref_last = Q_ref
+    else
+        #C_i_inner = 0
+        P_ref = K_p_inner * P_ref_last 
+        Q_ref = K_p_inner * Q_ref_last
+        P_ref_last = P_ref
+        Q_ref_last = Q_ref
+    end
+    P_ref, Q_ref
+end
+   
+#constant DC voltage control using PI controller
+
+function PI_controller_outer(U_dc)
+    #U_dc_ref = 500E3  
+    #U_ref_last = U_dc  #the first loop
+
+    K_p_outer = 1.0  #values of k to be discussed
+    K_i_outer = 0.5
+    #C_i_inner = 1 #help to reduce the error in a shorter time
+
+    if abs(U_dc) < 480E3
+        U_dc_ref = K_p_outer * U_dc + K_i_outer * integrate(U_dc)
+        U_dc = U_dc_ref
+    else
+        #C_i_inner = 0
+        U_dc_ref = K_p_outer * U_ref_last
+        U_dc = U_dc_ref
+    end
+    U_dc
 end
 
-export PiModelLine
 
-# function toyexample()
-#     P_ref1 = - P_ref2
-#     Q_ref1 = - Q_ref2
-#     adn1 = adn_cpg(P_ref1, Q_ref1)
-#     adn2 = adn_cpg(P_ref2, Q_ref2)
-    
+P_dc = U_dc * I_dc
+
+adn_power = P_ref + P_converter_loss
+
+if (P_dc - adn_power) != 0
+    P_ref = P_dc - P_converter_loss
+    PI_controller_inner(P_ref, Q_ref, P_ref_last, Q_ref_last)
+end
+
+# # included in DCConverter
+# @Line PiModelLine_dc(from, to, y_ij) begin
+#     Y_dc = PiModel(y_ij)
+# end begin
+#     voltage_vector = [source_voltage,destination_voltage]
+#     I_dc = Y_dc * (destination_voltage - source_voltage)
+#     #
 # end
 
+# export PiModelLine_dc
 
 
-@everywhere adn_dc_step, prob_step = toyexample(
-    S_slack, 
-    t -> real(S_slack),  #the measured value
-    t -> imag(S_slack); 
+
+# adn_dc_step, prob_step = toyexample(
+#     S_slack, 
+#     t -> real(S_slack),  #the measured value
+#     t -> imag(S_slack); 
     
-    P_ref = 0.0, #P_ref的值是给出的，还是计算得出的?
-    Q_ref = 0.0,
-    t_duration = 0.,
-    resistance = 3.5,# to be defined 
-    quad = 0.,  # here means independent of u at adn side
-    verbose = false,
-    tspan = (0.,50.),
-    adn1 = adn_cpg(P_ref1, Q_ref1), 
-    adn2 = adn_cpg(P_ref2, Q_ref2),
-    converter1 = converter(),
-    converter2 = converter(),
-    )
-
-
-ΔP = P_ref(t) - real(S_slack)
-ΔQ = Q_ref(t) - imag(S_slack)
-P_ref1 = - P_ref2
-Q_ref1 = - Q_ref2
-
-
-
-
-ode = remake(prob_step, callback = nothing) #remake?
-dqsol = solve(ode, Rodas4())  #Rosenbrock函数是一个用来测试最优化算法性能的非凸函数non-convex function,此处是用该方法求微分方程
-sol = PowerGridSolution(dqsol, adn_dc_step) #PowerDynamics.jl/src/common/PowerGridSolutions.jl 按步长
-Δ = [dqsol.prob.f.f.cpg.controller(u, nothing, t) |> first for (t, u) in zip(dqsol.t, dqsol.u)]
-#zip把前项的元素与后项的元素按顺序对应起来   dqsol.prob.f.f.cpg???
-#|> Applies a function to the preceding argument. This allows for easy function chaining.
-using Plots
-
-plot(sol, 2:12, :P_g, legend=false)
-plot(dqsol.t, first.(Δ))
-
-
-# @everywhere cpg_step, prob_step = CIGRE_prob(
-# 	S_total,
-# 	t -> real(S_total),
-# 	t -> imag(S_total);
-#     nsc_node = 4,
+#     P_ref = 0.0, #P_ref的值是给出的，还是计算得出的?
+#     Q_ref = 0.0,
 #     t_duration = 0.,
-#     resistance = 3.5,
-#     quad = 0.,
-#     get_cpg = true,
+#     resistance = 3.5,# to be defined 
+#     quad = 0.,  # here means independent of u at adn side
 #     verbose = false,
-# 	tspan = (0.,50.),
-# )
+#     tspan = (0.,50.),
+#     adn1 = adn_cpg(P_ref1, Q_ref1), 
+#     adn2 = adn_cpg(P_ref2, Q_ref2),
+#     converter1 = converter(),
+#     converter2 = converter(),
+#     )
+
+
+# ΔP = P_ref(t) - real(S_slack)
+# ΔQ = Q_ref(t) - imag(S_slack)
+# P_ref1 = - P_ref2
+# Q_ref1 = - Q_ref2
+
+
+
 
 # ode = remake(prob_step, callback = nothing) #remake?
-# dqsol = solve(ode, Rodas4())  #Rosenbrock函数是一个用来测试最优化算法性能的非凸函数,此处是用该方法求微分方程
-# sol = PowerGridSolution(dqsol, cpg_step) #PowerDynamics.jl/src/common/PowerGridSolutions.jl 按步长
+# dqsol = solve(ode, Rodas4())  #Rosenbrock函数是一个用来测试最优化算法性能的非凸函数non-convex function,此处是用该方法求微分方程
+# sol = PowerGridSolution(dqsol, adn_dc_step) #PowerDynamics.jl/src/common/PowerGridSolutions.jl 按步长
 # Δ = [dqsol.prob.f.f.cpg.controller(u, nothing, t) |> first for (t, u) in zip(dqsol.t, dqsol.u)]
-# #zip把前项的元素与后项的元素按顺序对应起来
+# #zip把前项的元素与后项的元素按顺序对应起来   dqsol.prob.f.f.cpg???
 # #|> Applies a function to the preceding argument. This allows for easy function chaining.
 # using Plots
 
 # plot(sol, 2:12, :P_g, legend=false)
 # plot(dqsol.t, first.(Δ))
+
+
 
 
 # cb1 = DiscreteCallback(
@@ -329,13 +368,3 @@ plot(dqsol.t, first.(Δ))
 #        tstops = [t_fault, t_fault + t_duration],
 #     )
 # end
-
-"running result:
-ERROR: LoadError: UndefVarError: P_ref not defined
-Stacktrace:
- [1] top-level scope at c:\Users\lenovo\adn-survivability\HVDC.jl:94
- [2] include(::Function, ::Module, ::String) at .\Base.jl:380
- [3] include(::Module, ::String) at .\Base.jl:368
- [4] exec_options(::Base.JLOptions) at .\client.jl:296
- [5] _start() at .\client.jl:506
-in expression starting at c:\Users\lenovo\adn-survivability\HVDC.jl:94"
