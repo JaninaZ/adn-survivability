@@ -37,7 +37,7 @@ function CIGRE_static(u_s)
 
     begin
         busses_static = Array{PowerDynamics.AbstractNode,1}([])
-        push!(busses_static, SlackAlgebraic(U = u_s)) #U = 110E3 / base_voltage_HV
+        push!(busses_static, SlackAlgebraic(U = u_s)) #U = 110E3 / base_voltage_HV  U = u_s
 
         for (P, Q) in zip(LoadP, LoadQ)
             try
