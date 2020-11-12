@@ -141,7 +141,7 @@ adn_pg, adn_cpg = ADN_construct(P_ref, Q_ref, u_s)  # Top level part
 
 
 
-function converter_construct(b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack, u_s)
+function converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack, u_s)
     # S_slack to be deined somewhere later, the value given from ADN
     # u_s = complex(x[1], x[2]) # ADN side
     # Vsamp = abs(u_s)
@@ -154,7 +154,7 @@ function converter_construct(b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack
     u_c = u_s + Z_c * I_c
     Vcamp = abs(u_c)
     # loss of converter
-    P_loss = b_i + (c_i + r_i) * I_c^2
+    P_loss = a_i + b_i * I_c + (c_i + r_i) * I_c^2
 
     # detect error state
     over_voltage = Vcamp > V_c_max
@@ -166,11 +166,11 @@ function converter_construct(b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack
 
             # power flow at DC side
     if over_voltage | global_over_voltage 
-        P_dc = I_c * V_c_max - P_loss
+        P_dc = I_c * V_c_max + P_loss
     elseif under_voltage |  global_under_voltage
-        P_dc = I_c * V_c_min - P_loss
+        P_dc = I_c * V_c_min + P_loss
     else
-        P_dc = I_c * u_c - P_loss
+        P_dc = I_c * u_c + P_loss
     end
 
     # voltage at DC side
@@ -179,7 +179,23 @@ function converter_construct(b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack
     U_dc, P_dc
 end
 
- converter1 = construct_vertex(b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack, u_s)
+# deined in article "analysis of VSC-based HVDC system" page 11
+const r = 0.0178
+const l = 1.415   #mH/km/pole
+const c = 0.0139 #uF/km/pole
+const transmission_length = 1000E3  # unit km
+# a_i, b_i, c_i, r_i, U_ref defined in paper "minimization of steady-state Losses in Meshed Networks using VSC HVDC"
+U_ref = 300E3  # a rating of 600MW and a DC voltage of -300kV~+300kV  
+a_i = 11.033E3  #inverter 11.033
+b_i = 3.464E3   #inverter 3.464
+c_i = 4.4E3  #inverter 6.667
+r_i = 3 * 0.66   #inverter 3*1
+V_c_max = 1.2 * U_ref
+V_c_min = 0.85 * U_ref
+Z_c = 1.57 + im * (0.05*ω)   # deined in article "analysis of VSC-based HVDC system" page 35
+Y_dc = 2 * r * transmission_length + im * (ω * l * transmission_length- 1/(ω * c * transmission_length))
+# deined in article "analysis of VSC-based HVDC system" page 54
+converter1 = converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack, u_s)
 
 # node i,j the admittance matrix is symmetic y_ij=y_ji
 function matrix_HVDC(y_ij)
@@ -208,10 +224,10 @@ function HVDC_slack(K_p, K_i, U_dc, U_ref)
 
     P_dc_controlled = K_p * ΔU + C_i * K_i * U_der
 
-    return P_dc3
+    return P_dc_controlled
 end
 
-U_ref = 500E3
+#U_ref = 300E3  # a rating of 600MW and a DC voltage of -300kV~+300kV
 K_p = 1.2
 K_i = 0.7
 hvdc_slack = HVDC_slack(K_p, K_i, U_dc, U_ref) # Top level part
