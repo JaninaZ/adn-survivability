@@ -13,6 +13,8 @@ using OrdinaryDiffEq
 using Distributions
 using Measurements
 
+using ModelingToolkit
+
 using Random
 Random.seed!(42)
 
@@ -110,7 +112,12 @@ function ADN_construct(P_ref, Q_ref, u_s)
    
     verbose ? check_operationpoint(cpg, op) : nothing  # defined in control.jl
    # verbose: print all additional information
-    return pg, cpg
+   S_slack = - complex(busses_static[2].P,busses_static[2].Q)./ base_power
+   #error message:
+   #LoadError: type SlackAlgebraic has no field S  when S_slack = busses_static[1].S
+   #LoadError: type PQAlgebraic has no field S  when S_slack = busses_static[2].S
+   #LoadError: type Tuple has no field S_slack
+   return pg, cpg, S_slack
 end #  ADN construct
    
    # construct an ADN 
@@ -128,20 +135,18 @@ begin
 end
 
 S_total = complex(24.373141067954748, 6.115974820490637) * 1e6 / base_power
-P_ref = 0.9 * real(S_total) # certain value
-Q_ref = 0.9 * imag(S_total)
+P_ref1 = 0.9 * real(S_total) # certain value
+Q_ref1 = 0.9 * imag(S_total)
+P_ref2 = - 0.8 * real(S_total) 
+Q_ref2 = - 0.8 * imag(S_total)
 u_s = 110E3 / base_voltage_HV  # 
 quad = 0.0
 verbose = false
 
 #  P_ref(t) = t > 0.25 ? 1.1 * real(S_total) : real(S_total)
 #  Q_ref(t) = t > 0.25 ? 1.1 * imag(S_total) : imag(S_total)
-adn_pg, adn_cpg = ADN_construct(P_ref, Q_ref, u_s)  # Top level part
-# the code started here, then go to function ADN_construct
 
-
-
-function converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack, u_s)
+function converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, S_slack, u_s)
     # S_slack to be deined somewhere later, the value given from ADN
     # u_s = complex(x[1], x[2]) # ADN side
     # Vsamp = abs(u_s)
@@ -160,11 +165,8 @@ function converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_
     over_voltage = Vcamp > V_c_max
     under_voltage = Vcamp < V_c_min
 
-    Y_dc = matrix_HVDC  # defined below
-    voltage_vector = [source_voltage,destination_voltage]
-    I_dc = Y_dc * (destination_voltage - source_voltage)
 
-            # power flow at DC side
+    # power flow at DC side
     if over_voltage | global_over_voltage 
         P_dc = I_c * V_c_max + P_loss
     elseif under_voltage |  global_under_voltage
@@ -172,11 +174,7 @@ function converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_
     else
         P_dc = I_c * u_c + P_loss
     end
-
-    # voltage at DC side
-    U_dc = P_dc / I_dc
-    # P_dc = U_dc * I_dc
-    U_dc, P_dc
+    P_dc
 end
 
 # deined in article "analysis of VSC-based HVDC system" page 11
@@ -192,42 +190,58 @@ c_i = 4.4E3  #inverter 6.667
 r_i = 3 * 0.66   #inverter 3*1
 V_c_max = 1.2 * U_ref
 V_c_min = 0.85 * U_ref
-Z_c = 1.57 + im * (0.05*ω)   # deined in article "analysis of VSC-based HVDC system" page 35
-Y_dc = 2 * r * transmission_length + im * (ω * l * transmission_length- 1/(ω * c * transmission_length))
+Z_c = 1.57 + im * (0.05 * ω)   # deined in article "analysis of VSC-based HVDC system" page 35
+Y_dc = 2 * r * transmission_length + im * (ω * l * transmission_length - 1/(ω * c * transmission_length))
 # deined in article "analysis of VSC-based HVDC system" page 54
-converter1 = converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, Y_dc, S_slack, u_s)
 
-# node i,j the admittance matrix is symmetic y_ij=y_ji
-function matrix_HVDC(y_ij)
-    matrix_HVDC = zeros(Complex{Float64}, 2, 2)
-    matrix_HVDC[1, 1] = y_ij 
-    matrix_HVDC[1, 2] = - y_ij 
-    matrix_HVDC[2, 1] = - y_ij
-    matrix_HVDC[2, 2] = y_ij
-    matrix_HVDC
-end
+#if give out all P_ref1, Q_ref1, P_ref2, Q_ref2 ,then one side should be negative and the other positive
+#or the connection between them will not work
+
+cpg_adn1 = ADN_construct(P_ref1, Q_ref1, u_s)
+S_slack1 = cpg_adn1.S_slack
+P_dc_1 = converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, S_slack1, u_s)
+cpg_adn2 = ADN_construct(P_ref2, Q_ref2, u_s)
+S_slack2 = cpg_adn2.S_slack
+P_dc_2 = converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, S_slack2, u_s)
+
+adn1_sys = ODESystem(rhs(cpg_adn1),t,[cpg_adn1.controller.u],[cpg_adn1.controller.p])
+adn2_sys = ODESystem(rhs(cpg_adn2),t,[cpg_adn2.controller.u],[cpg_adn2.controller.p])
+#sys = modelingtoolkitize(prob)  
+# to get a symbolic representation, call modelingtoolkitize on the prob, which will return an ODESystem
+@parameters t Y_dc U_ref K_p K_i P_dc_1 P_dc_2 #coefficient
+@variables P_dc_3(t) U_dc1(t) U_dc2(t) U_dc3(t) U_der(t) #variables
+@derivatives D'~t
+
+ΔU = U_ref - U_dc3
+
+eqs = [0 ~ U_dc1*(Y_dc*(2*U_dc1-U_dc2-U_dc3)) - P_dc_1,
+       0 ~ U_dc2*(Y_dc*(2*U_dc2-U_dc1-U_dc3)) - P_dc_2,
+       0 ~ U_dc3*(Y_dc*(2*U_dc3-U_dc2-U_dc1)) - P_dc_3,
+       D(P_dc_3) ~ K_p *  U_der + K_i * ΔU,
+       D(ΔU) ~ U_der]
 
 
-# constant DC power control using PI controller
+HVDC_slack = ODESystem(eqs)
+# sys = ode_order_lowering(sys)
 
-function HVDC_slack(K_p, K_i, U_dc, U_ref)
-    # PI controller
-    ΔU = U_ref - U_dc
-    U_der = dΔU
-    C_i = 1
+u0 = [P_dc_3 => 0.0,
+      U_dc1 => 0.0,
+      U_dc2 => 0.0,
+      U_dc3 => 0.0,
+      U_der => 0.0]
 
-    if abs(ΔU) < 1E3
-        C_i = 1
-    else
-        C_i = 0
-    end
+      
+p  = [Y_dc,
+      U_ref,
+      K_p = 0.0, #to be calculated
+      K_i = 0.0,
+      P_dc_1,
+      P_dc_2]
 
-    P_dc_controlled = K_p * ΔU + C_i * K_i * U_der
-
-    return P_dc_controlled
-end
-
-#U_ref = 300E3  # a rating of 600MW and a DC voltage of -300kV~+300kV
-K_p = 1.2
-K_i = 0.7
-hvdc_slack = HVDC_slack(K_p, K_i, U_dc, U_ref) # Top level part
+connections = [adn1_sys,adn2_sys,HVDC_slack]
+connected = ODESystem(connections,t,systems=[adn1_sys,adn2_sys,HVDC_slack])
+tspan = (0.0,10.0)
+prob = ODEProblem(connected,u0,tspan,p)
+sol = solve(prob,Rodas5())
+plot(sol)
+savefig("HVDC.png")
