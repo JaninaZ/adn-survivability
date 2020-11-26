@@ -15,7 +15,7 @@ using Measurements
 
 using DifferentialEquations
 using Plots
-
+using ModelingToolkit
 
 
 function converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, S_slack, u_s)
@@ -88,43 +88,110 @@ P_dc_1 = converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, S_slack1
 #println(P_dc_1)
 P_dc_2 = converter_construct(a_i, b_i, c_i, r_i, V_c_max, V_c_min, Z_c, S_slack2, u_s)
 #println(P_dc_2)
-function HVDC_slack!(out,du, u, t)
-    # PI controller
-    #ΔU = U_ref - U_dc[3]  #p[1] is U_ref
-    # dΔU = U_der
-    #u[1] = P_dc_controlled
-    
-    #u[3] U_dc1, u[4] U_dc2, U_dc3 = u[5]
-    # P_dc_1 = u[3]*(Y_dc*(2*u[3]-u[4]-u[5]))
-    # P_dc_2 = u[4]*(Y_dc*(2*u[4]-u[3]-u[5]))
-    # u[1] = u[5]*(Y_dc*(2*u[5]-u[4]-u[5]))
-    # u[2] = U_ref - u[5]
-    out[1] = K_p * du[2] + K_i * u[2] - du[1]
-    out[2] = U_ref - u[5] - u[2]   # ΔU = U_ref - U_dc
-    out[3] = u[3]*(Y_dc*(2*u[3]-u[4]-u[5])) - P_dc_1
-    out[4] = u[4]*(Y_dc*(2*u[4]-u[3]-u[5])) - P_dc_2
-    out[5] = u[1] - u[5]*(Y_dc*(2*u[5]-u[4]-u[5]))
-    
-    # P_dc_1 = U_dc[1]*(Y_dc*(2*U_dc[1]-U_dc[2]-U_dc[3]))
-    # P_dc_2 = U_dc[2]*(Y_dc*(2*U_dc[2]-U_dc[1]-U_dc[3]))
-    # u[1] = U_dc[3]*(Y_dc*(2*U_dc[3]-U_dc[2]-U_dc[1]))
 
-    #du[1] = K_p * du[2] + K_i * u[2]   #p[2] is K_p  p[3] is K_i
-   
-end
+@parameters t Y_dc U_ref K_p K_i P_dc_1 P_dc_2 #coefficient
+@variables P_dc_3(t) U_dc1(t) U_dc2(t) U_dc3(t) U_der(t) #variables
+@derivatives D'~t
 
-u0 = [1.0, 0.0, 0.0, 0.0, 0.0]
-du0 = [0.0,0.0,0.0,0.0,0.0]
-tspan = [0.0,1.0]
-# p = [ K_p, K_i]
-differential_vars = [true,true, false,false,false]
-prob = DAEProblem(HVDC_slack!,du0, u0, tspan,differential_vars=differential_vars)
-using Sundials
-sol = solve(prob,IDA())
+ΔU = U_ref - U_dc3
 
+eqs = [0 ~ U_dc1*(Y_dc*(2*U_dc1-U_dc2-U_dc3)) - P_dc_1,
+       0 ~ U_dc2*(Y_dc*(2*U_dc2-U_dc1-U_dc3)) - P_dc_2,
+       0 ~ U_dc3*(Y_dc*(2*U_dc3-U_dc2-U_dc1)) - P_dc_3,
+       D(P_dc_3) ~ K_p *  U_der + K_i * ΔU,
+       D(ΔU) ~ U_der]
+
+# eqs = [D(D(x)) ~ σ*(y-x),
+#        D(y) ~ x*(ρ-z)-y,
+#        D(z) ~ x*y - β*z]
+
+HVDC_slack! = ODESystem(eqs)
+# sys = ode_order_lowering(sys)
+
+u0 = [P_dc_3 => 0.0,
+      U_dc1 => 0.0,
+      U_dc2 => 0.0,
+      U_dc3 => 0.0,
+      U_der => 0.0]
+
+      
+p  = [Y_dc,
+      U_ref,
+      K_p,
+      K_i,
+      P_dc_1,
+      P_dc_2]
+
+tspan = (0.0,10.0)
+prob = ODEProblem(HVDC_slack!,u0,tspan,p)
+sol = solve(prob,Tsit5())
 plot(sol)
 
 
+
+# function HVDC_slack!(out,du, u, t)
+#     # PI controller
+#     #ΔU = U_ref - U_dc[3]  #p[1] is U_ref
+#     # dΔU = U_der
+#     #u[1] = P_dc_controlled
+    
+#     #u[3] U_dc1, u[4] U_dc2, U_dc3 = u[5]
+#     # P_dc_1 = u[3]*(Y_dc*(2*u[3]-u[4]-u[5]))
+#     # P_dc_2 = u[4]*(Y_dc*(2*u[4]-u[3]-u[5]))
+#     # u[1] = u[5]*(Y_dc*(2*u[5]-u[4]-u[5]))
+#     # u[2] = U_ref - u[5]
+#     out[1] = K_p * du[2] + K_i * u[2] - du[1]
+#     out[2] = U_ref - u[5] - u[2]   # ΔU = U_ref - U_dc
+#     out[3] = u[3]*(Y_dc*(2*u[3]-u[4]-u[5])) - P_dc_1
+#     out[4] = u[4]*(Y_dc*(2*u[4]-u[3]-u[5])) - P_dc_2
+#     out[5] = u[1] - u[5]*(Y_dc*(2*u[5]-u[4]-u[5]))
+    
+#     # P_dc_1 = U_dc[1]*(Y_dc*(2*U_dc[1]-U_dc[2]-U_dc[3]))
+#     # P_dc_2 = U_dc[2]*(Y_dc*(2*U_dc[2]-U_dc[1]-U_dc[3]))
+#     # u[1] = U_dc[3]*(Y_dc*(2*U_dc[3]-U_dc[2]-U_dc[1]))
+
+#     #du[1] = K_p * du[2] + K_i * u[2]   #p[2] is K_p  p[3] is K_i
+   
+# end
+
+# u0 = [1.0, 0.0, 0.0, 0.0, 0.0]
+# du0 = [0.1,0.0,0.0,0.0,0.0]
+# tspan = [0.0,1.0]
+# # p = [ K_p, K_i]
+# differential_vars = [true,true, false,false,false]
+# prob = DAEProblem(HVDC_slack!,du0, u0, tspan,differential_vars=differential_vars)
+# using Sundials
+# sol = solve(prob,IDA())
+
+# plot(sol)
+# function HVDC_slack!(du, u, p, t)
+#     P_dc_3,  ΔU = u 
+#     # PI controller
+#     ΔU = p[1] - U_dc  #p[1] is U_ref
+        
+#     P_dc_1 = U_dc[1]*(Y_dc*(2*U_dc[1]-U_dc[2]-U_dc[3]))
+#     P_dc_2 = U_dc[2]*(Y_dc*(2*U_dc[2]-U_dc[1]-U_dc[3]))
+#     P_dc_3 = U_dc[3]*(Y_dc*(2*U_dc[3]-U_dc[2]-U_dc[1]))
+    
+#     if abs(ΔU) < 1E3
+#         dP_dc_3 = p[2] *  U_der + p[3] * ΔU   #p[2] is K_p  p[3] is K_i
+#         dΔU = U_der
+#     else
+#         dP_dc_3 = p[2]  * dΔU
+#     end
+#     du = dP_dc_3, dΔU
+# end
+# K_p = 0.  # to be calculated
+# K_i = 0.
+# U_dc0 = [1.0;0.0;0.0]
+# tspan = [0.0,1.0]
+# p = [U_ref, K_p, K_i]
+# prob = ODEProblem(HVDC_slack!, U_dc0, tspan, p)
+# sol = solve(prob)
+
+# plot(sol)
+
+# plot(sol)
 # function p_test!(du, u,p, t)
 #     u[2]= u[1] + 1.0  #available like this
 #     du[2] = u[1] * (28.0 - u[3]) - u[2]
