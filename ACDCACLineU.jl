@@ -30,9 +30,9 @@ C_dc = ω * c * transmission_length / 4
 C_conv = ω * 20E-6
 Z_dc = 2 * r * transmission_length + 1im * (ω * l * transmission_length * 2 - 1 / (C_dc + C_conv))
 
-
-function Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
-    #u_s can also be defined if needed CIGRE_static_2ADN.jl
+#after each step is checked, from line 34 to 107 will be included in a function
+#function Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
+    #u_s can also be defined if needed in CIGRE_static_2ADN.jl
     busses_static1, lines1, T1, elist1, Zs1, Yshs1 = CIGRE_static_ADN1()#1-12
     busses_static2, lines2, T2, elist2, Zs2, Yshs2 = CIGRE_static_ADN2()#13-24
     
@@ -89,8 +89,8 @@ function Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
 
     end
    
-    k = 2  # from paper"An Equivalent Model for simulating VSC Based HVDC"
-    DCline = [StaticLine(;from=1, to=13, Y=1 / Z_dc * k^2)]
+    k = 0.5  # from paper"An Equivalent Model for simulating VSC Based HVDC"
+    DCline = [StaticLine(;from=1, to=13, Y=1 / Z_dc *(1/(k^2)))]
 
     line = append!(lines, DCline)
     pg = PowerGrid(busses, line)
@@ -104,9 +104,9 @@ function Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
     verbose ? check_operationpoint(cpg, op) : nothing 
 
     return pg, cpg
-end
+#end
 
-pg = Grid_ACDC()
+pg = Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
 
 fp = find_valid_initial_condition(pg, ones(163))
 # fp = initial_guess(pg)
