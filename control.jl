@@ -194,12 +194,13 @@ function ADN(pg::PowerGrid, DGUnit_Type, P_ref, Q_ref)
     slack_idx = -1
     try
         # see if an alternative slack definition is used
-        slack_idx = findfirst([node isa Union{ExtDampedGrid, SlackAlgebraic} for node in pg.nodes])
+        slack_idx = findfirst([typeof(node) isa Union{ExtDampedGrid, SlackAlgebraic} for node in pg.nodes])
     catch
-        slack_idx = findfirst([node isa SlackAlgebraic for node in pg.nodes])
+        slack_idx = findfirst([typeof(node) isa typeof(SlackAlgebraic) for node in pg.nodes])
     end
 
     Y = PiModel(first(pg.lines))
+    #println("Found slack at bus " ,slack_idx)
     offset = dimension(pg.nodes[slack_idx])
 
     #println("Found slack at bus $slack_idx. Offset: $offset")

@@ -108,7 +108,7 @@ Z_dc = 2 * r * transmission_length + 1im * (ω * l * transmission_length * 2 - 1
 
 pg = Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
 
-fp = find_valid_initial_condition(pg, ones(163))
+#fp = find_valid_initial_condition(pg, ones(163))
 # fp = initial_guess(pg)
 tspan = (0, 20.0)
 sol = solve(pg, fp, tspan)
