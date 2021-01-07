@@ -2,10 +2,13 @@
 import Base: @__doc__
 import PowerDynamics:  dimension, construct_edge, AbstractLine,PowerGrid
 using PowerDynamics: PiModelLine
-using NetworkDynamics: ODEEdge
+using NetworkDynamics#: ODEEdge
+#using OrdinaryDiffEq: ODEFunction
+using DifferentialEquations
 dir = @__DIR__
 # include("$dir/LineMacro.jl")
 include("$dir/CIGRE_static_2ADN.jl")
+#include("$dir/control.jl")
 begin
     const base_power = 1E6 # 1MW
     const base_voltage = 20E3 # 20kV
@@ -28,7 +31,7 @@ verbose = false
 # Z_c = 1.57 + im * (0.05 * ω)   # deined in article "analysis of VSC-based HVDC system" page 35
 C_dc = ω * c * transmission_length / 4
 C_conv = ω * 20E-6
-Z_dc = 2 * r * transmission_length + 1im * (ω * l * transmission_length * 2 - 1 / (C_dc + C_conv))
+Z_dcconv = 2 * r * transmission_length + 1im * (ω * l * transmission_length * 2 - 1 / (C_dc + C_conv))
 
 #after each step is checked, from line 34 to 107 will be included in a function
 #function Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
@@ -90,29 +93,31 @@ Z_dc = 2 * r * transmission_length + 1im * (ω * l * transmission_length * 2 - 1
     end
    
     k = 0.5  # from paper"An Equivalent Model for simulating VSC Based HVDC"
-    DCline = [StaticLine(;from=1, to=13, Y=1 / Z_dc *(1/(k^2)))]
+    DCline = [StaticLine(;from=1, to=13, Y=1 / Z_dcconv *(1/(k^2)))]
 
     line = append!(lines, DCline)
     pg = PowerGrid(busses, line)
 
+    # P_ref = 1
+    # Q_ref = -1
     cpg = ADN(pg, DGUnit, t -> P_ref, t -> Q_ref) # some problems in control.jl: DGUnit_Type not available
     #cpg = ADN(pg, DGUnit,  P_ref(t), Q_ref(t))
-    icguess_pf = initial_guess(cpg, power_flow[:, :u]) # Defined in control.jl
+    icguess_pf = initial_guess(cpg, power_flow[:, :u])
 
-    op = find_steady_state(cpg, icguess_pf) # Defined in control.jl
+    op = find_steady_state(cpg, icguess_pf) 
     # initial_guess(pg)  return State(pg, sol.u)
     verbose ? check_operationpoint(cpg, op) : nothing 
 
     return pg, cpg
 #end
 
-pg = Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
+#pg = Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
 
 #fp = find_valid_initial_condition(pg, ones(163))
 # fp = initial_guess(pg)
 tspan = (0, 20.0)
 sol = solve(pg, fp, tspan)
-#sol = solve(pg, op, tspan)
+#sol = solve(cpg, op, tspan)
 using Plots
 
 plot(sol.dqsol,fmt=:png)
