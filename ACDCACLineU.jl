@@ -39,13 +39,16 @@ Z_dcconv = 2 * r * transmission_length + 1im * (ω * l * transmission_length * 2
     busses_static1, lines1, T1, elist1, Zs1, Yshs1 = CIGRE_static_ADN1()#1-12
     busses_static2, lines2, T2, elist2, Zs2, Yshs2 = CIGRE_static_ADN2()#13-24
     
-    busses_static = append!(busses_static1, busses_static2)#1-24
-    lines = append!(lines1, lines2)
+    k = 0.5  # from paper"An Equivalent Model for simulating VSC Based HVDC"
+    DCline = [StaticLine(;from=1, to=13, Y=1 / Z_dcconv *(1/(k^2)))]
 
-    pg_static = PowerGrid(busses_static, lines) 
+    busses_static = append!(busses_static1, busses_static2)#1-24
+    lines = append!(lines1, lines2, DCline)
+
+    pg_static = PowerGrid(busses_static, lines) #consider if DC line also included head
     power_flow = pf_sol(pg_static, initial_guess(pg_static), nothing)
 
-    busses = copy(busses_static)
+    busses = copy(busses_static)#1-24
 
     DG_locs = 1:24 # located, 1 for slack, so 2 for MV1
     for i in DG_locs # this is a loop 
@@ -92,15 +95,11 @@ Z_dcconv = 2 * r * transmission_length + 1im * (ω * l * transmission_length * 2
 
     end
    
-    k = 0.5  # from paper"An Equivalent Model for simulating VSC Based HVDC"
-    DCline = [StaticLine(;from=1, to=13, Y=1 / Z_dcconv *(1/(k^2)))]
-
-    line = append!(lines, DCline)
-    pg = PowerGrid(busses, line)
+    pg = PowerGrid(busses, lines)
 
     # P_ref = 1
     # Q_ref = -1
-    cpg = ADN(pg, DGUnit, t -> P_ref, t -> Q_ref) # some problems in control.jl: DGUnit_Type not available
+    cpg = ADN(pg, DGUnit, t -> P_ref, t -> Q_ref) 
     #cpg = ADN(pg, DGUnit,  P_ref(t), Q_ref(t))
     icguess_pf = initial_guess(cpg, power_flow[:, :u])
 
