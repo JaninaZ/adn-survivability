@@ -1,3 +1,6 @@
+import Base: @__doc__
+using PowerDynamics
+dir = @__DIR__
 ###### knoten ######
 include("$dir/control.jl")
 # custom types
@@ -19,7 +22,8 @@ include("$dir/ACDCACLineU.jl")
 #function Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
     busses_static1, lines1, T1, elist1, Zs1, Yshs1 = CIGRE_static_ADN1()#1-12
     busses_static2, lines2, T2, elist2, Zs2, Yshs2 = CIGRE_static_ADN2()#13-24
-    
+    DCline = ACDCACLine()
+
     busses_static = []
     append!(busses_static, busses_static1)
     append!(busses_static, busses_static2) # bus from 1 to 24
@@ -44,15 +48,15 @@ include("$dir/ACDCACLineU.jl")
 
         S_bkgrnd = zero(im)
 
-    # try
+    try
 
-    #     S_bkgrnd = busses_static[i].S
+        S_bkgrnd = busses_static[i].S
 
-    # catch
+    catch
 
-    #     S_bkgrnd = complex(busses_static[i].P, busses_static[i].Q)
+        S_bkgrnd = complex(busses_static[i].P, busses_static[i].Q)
 
-    # end
+    end
 
         busses[i] = DGUnit(;
 
@@ -88,15 +92,15 @@ include("$dir/ACDCACLineU.jl")
 
         S_bkgrnd = zero(im)
 
-    # try
+    try
 
-    #     S_bkgrnd = busses_static[i].S
+        S_bkgrnd = busses_static[i].S
 
-    # catch
+    catch
 
-    #     S_bkgrnd = complex(busses_static[i].P, busses_static[i].Q)
+        S_bkgrnd = complex(busses_static[i].P, busses_static[i].Q)
 
-    # end
+    end
 
         busses[i] = DGUnit(;
 
@@ -112,7 +116,7 @@ include("$dir/ACDCACLineU.jl")
 
         I_max=1.0, # pu
 
-        P_limit=5.0, # pu
+        P_limit=20.0, # pu
 
         Q_limit=1.0, # pu
 
@@ -131,7 +135,7 @@ include("$dir/ACDCACLineU.jl")
    
     pg = PowerGrid(busses, lines)
 
-    P_ref = 24
+    P_ref = 20 #ADN provide power to the higher grid
     Q_ref = 0 # DC part has no reactive power
     cpg = ADN(pg, DGUnit, t -> P_ref, t -> Q_ref) 
     #cpg = ADN(pg, DGUnit,  P_ref(t), Q_ref(t))
