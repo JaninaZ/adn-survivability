@@ -38,6 +38,7 @@ function CIGRE_static_ADN1()
 
     begin
         busses_static1 = Array{PowerDynamics.AbstractNode,1}([])
+        #push!(busses_static1, SlackAlgebraic(U = 110E3 / base_voltage_HV))
         push!(busses_static1, SlackAlgebraic(U = 110E3 / base_voltage_HV)) #U = 110E3 / base_voltage_HV  U = u_s
 
         for (P, Q) in zip(LoadP, LoadQ)
