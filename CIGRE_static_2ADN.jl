@@ -1,15 +1,4 @@
 using PowerDynamics#: AbstractLine, AbstractNode
-###### knoten ######
-include("$dir/control.jl")
-# custom types
-include("$dir/DGUnit.jl")
-include("$dir/OLTC.jl")
-# load actual data
-include("$dir/cigre_static.jl")
-# failure model
-#include("$dir/short_circuit.jl")  #there is problem when running through this julia file
-# static solution
-include("$dir/power_flow.jl")
 
 
 # the only difference between these functions is the elist
@@ -205,11 +194,12 @@ function CIGRE_static_ADN2()
 
     ###### Kanten ######
 
-
+    #include("$dir/ACDCACLineU.jl")
 
     T2 = OLTC(
         from = 13,
         to = 14,
+        #Uos = 110E3 / base_voltage_HV + total_current(e_s, e_d)* k^2 / Y_dcconv,
         Uos = 110E3 / base_voltage_HV, # Bemessungsspannung Oberspannungsseite in kV
         Uus = 20E3 / base_voltage,# Bemessungsspannung Unterspannungsseite in kV
         k = 0, # Kennzahl der Schaltgruppe, Bsp: YD5-> 5
