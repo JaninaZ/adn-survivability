@@ -107,8 +107,8 @@ function initial_guess(pg)
     if SlackAlgebraic ∉ pg.nodes .|> typeof
         @warn "There is no slack bus in the system to balance powers."
     end
-
-    sl = findfirst(SlackAlgebraic  ∈  pg.nodes .|> typeof)
+    sl=13
+    #sl = findfirst(SlackAlgebraic  ∈  pg.nodes .|> typeof)
     slack = pg.nodes[sl]
 
     type_guesses = guess.(pg.nodes, slack.U)
@@ -134,7 +134,7 @@ function guess(n::AbstractNode, slack_voltage)
 end
 
 function guess(n::SlackAlgebraic, slack_voltage)
-    @assert n.U ≈ slack_voltage
+    # @assert n.U ≈ slack_voltage
     return [real(n.U), imag(n.U)]
 end
 
@@ -191,14 +191,14 @@ check_operationpoint(op::State) = check_operationpoint(op.grid, op.vec)
 using NetworkDynamics: GetGD
 
 function ADN(pg::PowerGrid, DGUnit_Type, P_ref, Q_ref)
-    slack_idx = -1
-    try
-        # see if an alternative slack definition is used
-        slack_idx = findfirst([typeof(node) isa Union{ExtDampedGrid, SlackAlgebraic} for node in pg.nodes])
-    catch
-        slack_idx = findfirst([typeof(node) isa typeof(SlackAlgebraic) for node in pg.nodes])
-    end
-
+    # slack_idx = -1
+    # try
+    #     # see if an alternative slack definition is used
+    #     slack_idx = findfirst([typeof(node) isa Union{ExtDampedGrid, SlackAlgebraic} for node in pg.nodes])
+    # catch
+    #     slack_idx = findfirst([typeof(node) isa typeof(SlackAlgebraic) for node in pg.nodes])
+    # end
+    slack_idx = 13
     Y = PiModel(first(pg.lines))
     #println("Found slack at bus " ,slack_idx)
     offset = dimension(pg.nodes[slack_idx])
@@ -214,7 +214,7 @@ function ADN(pg::PowerGrid, DGUnit_Type, P_ref, Q_ref)
         gd = rpg.f(u, nothing, 0., GetGD)
         trafo_currents = first(gd.e)
         LV_to_HV = - complex(trafo_currents[3], trafo_currents[4])
-        uLV = complex(gd.v[2][1], gd.v[2][2])
+        uLV = complex(gd.v[2][1], gd.v[2][2]) #taking from the first slack bus
         return uLV * conj(LV_to_HV)
     end
 
