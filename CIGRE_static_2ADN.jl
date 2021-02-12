@@ -113,6 +113,14 @@ function CIGRE_static_ADN1()
 
     Zs1 = complex(R1, X1) .* ldata1 #[!, Symbol("L_km(nicht ändern)")]
     Yshs1 = 1im .* ω .* C1 .* ldata1 #[!, Symbol("L_km(nicht ändern)")]
+   
+    # T1 = PiModelLine(
+    #     from = 1,
+    #     to = 2,
+    #     y = inv(complex(R1, X1)) / base_admittance,
+    #     y_shunt_km = 1im .* ω .* C1 / 2.0 / base_admittance,
+    #     y_shunt_mk = 1im .* ω .* C1 / 2.0 / base_admittance,
+    # ) #added
 
     begin
         lines1 = Array{AbstractLine,1}([])
