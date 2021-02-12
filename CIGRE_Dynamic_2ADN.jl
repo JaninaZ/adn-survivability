@@ -21,18 +21,52 @@ include("$dir/ACDCACLineU.jl")
 
 #function Grid_ACDC(P_ref1,P_ref2,Q_ref1,Q_ref2)
     busses_static1, lines1, T1, elist1, Zs1, Yshs1 = CIGRE_static_ADN1()#1-12
-    busses_static2, lines2, T2, elist2, Zs2, Yshs2 = CIGRE_static_ADN2()#13-24
-    DCline = ACDCACLine()
+    ###### only for test(one ADN) ######
+    pg_static1 = PowerGrid(busses_static1, lines1)
+    using GraphPlot
+    using LightGraphs: smallgraph
+    # g = smallgraph(:karate)
+    #gplot(pg)
+    # nodelabel = 1:nv(pg.node)
+    gplot(pg_static1.graph)
+     
+    power_flow1 = pf_sol(pg_static1, initial_guess(pg_static1), nothing)
+    #power_flow1 = pf_sol(pg_static1, ones(12,1), nothing)
+
+    # busses_static2, lines2, T2, elist2, Zs2, Yshs2 = CIGRE_static_ADN2()#13-24
+
+    # ######only for test(one ADN, one SlackAlgebraic with one test line)######
+    # busses_static2= [SlackAlgebraic(U = 110E3 / base_voltage_HV)]
+    # C_dc = ω * c * transmission_length / 4
+    # C_conv = ω * 20E-6
+    # Z_dcconv =  r * transmission_length + 1im * (ω * l * transmission_length - 1 / (2 * C_dc + 2 * C_conv))
+    # C1 = 0.1511749E-6 
+    # ldata =  2.82
+    # Ysh = 1im .* ω .* C1 .* ldata
+    # linetest = [PiModelLine(;from=1, to = 13 ,y=1/Z_dcconv ,y_shunt_km = Ysh / 2.0 / base_admittance,
+    # y_shunt_mk = Ysh / 2.0 / base_admittance, )]
+    
+    #DCline = ACDCACLine()
 
     busses_static = []
     append!(busses_static, busses_static1)
     append!(busses_static, busses_static2) # bus from 1 to 24
     lines = []
     append!(lines, lines1)
-    append!(lines, lines2)
-    append!(lines, DCline) # all the lines
+    #append!(lines, lines2)
+    #append!(lines, DCline) # all the lines
+    append!(lines, linetest) # for test
 
     pg_static = PowerGrid(busses_static, lines) 
+    
+    # ###### only for test ######
+    # using GraphPlot
+    # using LightGraphs: smallgraph
+    # # g = smallgraph(:karate)
+    # #gplot(pg)
+    # # nodelabel = 1:nv(pg.node)
+    # gplot(pg_static.graph)
+
     power_flow = pf_sol(pg_static, initial_guess(pg_static), nothing)
 
     busses = copy(busses_static)
